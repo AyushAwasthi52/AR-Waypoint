@@ -1,0 +1,1553 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>AR Navigator - Real World Explorer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #000;
+            overflow: hidden;
+            user-select: none;
+            height: 100vh;
+        }
+        
+        #container {
+            position: relative;
+            width: 100vw;
+            height: 100vh;
+        }
+        
+        #camera-view {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+        }
+        
+        #ar-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 2;
+            pointer-events: none;
+        }
+        
+        #ui-layer {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            z-index: 10;
+            pointer-events: none;
+        }
+        
+        .ui-element {
+            pointer-events: auto;
+        }
+        
+        /* Navigation HUD */
+        .nav-hud {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            gap: 15px;
+        }
+        
+        .location-panel {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(15px);
+            border-radius: 15px;
+            padding: 15px;
+            color: white;
+            border: 2px solid #4CAF50;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            flex: 1;
+            max-width: 200px;
+        }
+        
+        .destination-panel {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(15px);
+            border-radius: 15px;
+            padding: 15px;
+            color: white;
+            border: 2px solid #FFD700;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+            flex: 1;
+            max-width: 250px;
+        }
+        
+        .panel-title {
+            color: #4CAF50;
+            font-size: 14px;
+            margin-bottom: 8px;
+            font-weight: bold;
+        }
+        
+        .destination-panel .panel-title {
+            color: #FFD700;
+        }
+        
+        .location-text {
+            font-size: 12px;
+            line-height: 1.3;
+        }
+        
+        .distance-large {
+            font-size: 24px;
+            font-weight: bold;
+            color: #FFD700;
+            margin: 8px 0;
+        }
+        
+        .eta {
+            font-size: 12px;
+            color: #4CAF50;
+        }
+        
+        /* AR Direction Indicator */
+        .direction-indicator {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 100px;
+            height: 100px;
+            pointer-events: none;
+        }
+        
+        .compass-ring {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            border: 3px solid rgba(255, 215, 0, 0.6);
+            border-radius: 50%;
+            animation: pulse-ring 2s infinite;
+        }
+        
+        .direction-arrow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 0;
+            height: 0;
+            border-left: 15px solid transparent;
+            border-right: 15px solid transparent;
+            border-bottom: 40px solid #FFD700;
+            transform: translate(-50%, -70%);
+            filter: drop-shadow(0 2px 8px rgba(0, 0, 0, 0.5));
+            animation: arrow-bounce 1.5s infinite;
+        }
+        
+        @keyframes pulse-ring {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 0.4; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+        
+        @keyframes arrow-bounce {
+            0%, 100% { transform: translate(-50%, -70%); }
+            50% { transform: translate(-50%, -80%); }
+        }
+        
+        /* Bottom Control Bar */
+        .control-bar {
+            position: absolute;
+            bottom: 20px;
+            left: 20px;
+            right: 20px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .control-group {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+        }
+        
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            border: 3px solid white;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(10px);
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .camera-btn {
+            width: 80px;
+            height: 80px;
+            background: linear-gradient(45deg, #ff4757, #ff3838);
+            border: 4px solid white;
+            font-size: 24px;
+        }
+        
+        .nav-btn {
+            background: linear-gradient(45deg, #4CAF50, #45a049);
+        }
+        
+        .control-btn:active {
+            transform: scale(0.95);
+        }
+        
+        /* Stats Panel */
+        .stats-mini {
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(15px);
+            border-radius: 25px;
+            padding: 10px 20px;
+            color: white;
+            border: 2px solid #FFD700;
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            font-size: 14px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-value {
+            font-weight: bold;
+            color: #FFD700;
+        }
+        
+        /* Modal Styles */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.9);
+            backdrop-filter: blur(10px);
+            z-index: 1000;
+            display: none;
+            overflow-y: auto;
+        }
+        
+        .modal-content {
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            margin: 20px;
+            border-radius: 20px;
+            padding: 25px;
+            color: white;
+            box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+            min-height: calc(100vh - 40px);
+        }
+        
+        .modal h2 {
+            margin: 0 0 20px 0;
+            color: #FFD700;
+            text-align: center;
+            font-size: 24px;
+        }
+        
+        .close-btn {
+            position: absolute;
+            top: 15px;
+            right: 20px;
+            background: rgba(255, 255, 255, 0.2);
+            border: none;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        /* Leaderboard Styles */
+        .leaderboard-item {
+            display: flex;
+            align-items: center;
+            padding: 15px;
+            margin: 10px 0;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 15px;
+            border-left: 4px solid #FFD700;
+        }
+        
+        .rank-number {
+            font-size: 20px;
+            font-weight: bold;
+            color: #FFD700;
+            width: 40px;
+            text-align: center;
+        }
+        
+        .player-info {
+            flex: 1;
+            margin: 0 15px;
+        }
+        
+        .player-name {
+            font-size: 16px;
+            font-weight: bold;
+        }
+        
+        .player-level {
+            font-size: 12px;
+            color: #4CAF50;
+        }
+        
+        .player-score {
+            font-size: 18px;
+            font-weight: bold;
+            color: #FFD700;
+        }
+        
+        /* Notification System */
+        .notification {
+            position: fixed;
+            top: 120px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(0, 0, 0, 0.9);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 25px;
+            z-index: 1001;
+            border: 2px solid #4CAF50;
+            animation: notification-appear 3s ease-in-out;
+        }
+        
+        @keyframes notification-appear {
+            0%, 100% { transform: translateX(-50%) translateY(-50px); opacity: 0; }
+            20%, 80% { transform: translateX(-50%) translateY(0); opacity: 1; }
+        }
+        
+        /* Achievement Popup */
+        .achievement-popup {
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: linear-gradient(45deg, #FFD700, #FFA500);
+            color: #000;
+            padding: 25px;
+            border-radius: 20px;
+            z-index: 1002;
+            text-align: center;
+            box-shadow: 0 15px 50px rgba(255, 215, 0, 0.4);
+            animation: achievement-bounce 4s ease-in-out;
+        }
+        
+        @keyframes achievement-bounce {
+            0%, 100% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+            20%, 80% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+        }
+        
+        /* Loading Screen */
+        .loading-screen {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%);
+            z-index: 2000;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            text-align: center;
+        }
+        
+        .spinner {
+            border: 4px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top: 4px solid #FFD700;
+            width: 50px;
+            height: 50px;
+            animation: spin 1s linear infinite;
+            margin-bottom: 20px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        /* GPS Accuracy Indicator */
+        .gps-accuracy {
+            position: absolute;
+            top: 80px;
+            right: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            padding: 8px 12px;
+            border-radius: 20px;
+            color: white;
+            font-size: 12px;
+            border: 2px solid;
+        }
+        
+        .gps-high { border-color: #4CAF50; }
+        .gps-medium { border-color: #FFD700; }
+        .gps-low { border-color: #FF4757; }
+        
+        /* Photo Flash */
+        .camera-flash {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: white;
+            z-index: 999;
+            opacity: 0;
+            pointer-events: none;
+        }
+        
+        .flash-animation {
+            animation: camera-flash 0.2s ease-out;
+        }
+        
+        @keyframes camera-flash {
+            0% { opacity: 0; }
+            50% { opacity: 0.9; }
+            100% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading-screen">
+        <div class="spinner"></div>
+        <h2>AR Navigator</h2>
+        <p>Initializing GPS and Camera...</p>
+        <p style="font-size: 12px; margin-top: 20px;">Please allow location and camera access</p>
+    </div>
+
+    <div id="container" style="display: none;">
+        <!-- Camera View -->
+        <video id="camera-view" autoplay playsinline muted></video>
+        
+        <!-- AR Overlay Canvas -->
+        <canvas id="ar-overlay"></canvas>
+        
+        <!-- Camera Flash Effect -->
+        <div id="camera-flash" class="camera-flash"></div>
+        
+        <!-- GPS Accuracy Indicator -->
+        <div id="gps-accuracy" class="gps-accuracy gps-low">
+            📡 GPS: Searching...
+        </div>
+        
+        <!-- UI Layer -->
+        <div id="ui-layer">
+            <!-- Navigation HUD -->
+            <div class="nav-hud">
+                <div class="location-panel ui-element">
+                    <div class="panel-title">📍 Current Location</div>
+                    <div id="current-location" class="location-text">Locating...</div>
+                    <div id="current-coords" class="location-text" style="font-size: 10px; color: #ccc; margin-top: 5px;"></div>
+                </div>
+                
+                <div class="destination-panel ui-element">
+                    <div class="panel-title">🎯 Destination</div>
+                    <div id="destination-name" class="location-text">Select a destination</div>
+                    <div class="distance-large" id="destination-distance">-- km</div>
+                    <div class="eta" id="destination-eta">ETA: --</div>
+                    <div style="font-size: 12px; color: #FFD700; margin-top: 5px;">
+                        <span id="destination-reward">🎁 Reward: -- points</span>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Direction Indicator (shown when navigating) -->
+            <div id="direction-indicator" class="direction-indicator" style="display: none;">
+                <div class="compass-ring"></div>
+                <div class="direction-arrow" id="direction-arrow"></div>
+                <div style="position: absolute; top: 110%; left: 50%; transform: translateX(-50%); color: white; font-size: 12px; text-align: center; background: rgba(0,0,0,0.7); padding: 5px 10px; border-radius: 10px;">
+                    <div id="bearing-text">N 45°</div>
+                </div>
+            </div>
+            
+            <!-- Control Bar -->
+            <div class="control-bar">
+                <div class="control-group ui-element">
+                    <button class="control-btn ui-element" id="destinations-btn" title="Destinations">🗺️</button>
+                    <button class="control-btn nav-btn ui-element" id="navigate-btn" title="Start Navigation">🧭</button>
+                </div>
+                
+                <button class="control-btn camera-btn ui-element" id="camera-btn" title="Take Photo">📷</button>
+                
+                <div class="control-group ui-element">
+                    <button class="control-btn ui-element" id="leaderboard-btn" title="Leaderboard">🏆</button>
+                    <button class="control-btn ui-element" id="profile-btn" title="Profile">👤</button>
+                </div>
+            </div>
+            
+            <!-- Mini Stats -->
+            <div style="position: absolute; bottom: 100px; left: 50%; transform: translateX(-50%);">
+                <div class="stats-mini ui-element">
+                    <div class="stat-item">
+                        <div class="stat-value" id="total-score">0</div>
+                        <div>Score</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="destinations-reached">0</div>
+                        <div>Reached</div>
+                    </div>
+                    <div class="stat-item">
+                        <div class="stat-value" id="distance-traveled">0.0</div>
+                        <div>km</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Modals -->
+    <div id="destinations-modal" class="modal">
+        <div class="modal-content">
+            <button class="close-btn">&times;</button>
+            <h2>🗺️ Choose Destination</h2>
+            <div id="destinations-list"></div>
+        </div>
+    </div>
+    
+    <div id="leaderboard-modal" class="modal">
+        <div class="modal-content">
+            <button class="close-btn">&times;</button>
+            <h2>🏆 Global Leaderboard</h2>
+            <div id="leaderboard-list"></div>
+        </div>
+    </div>
+    
+    <div id="profile-modal" class="modal">
+        <div class="modal-content">
+            <button class="close-btn">&times;</button>
+            <h2>👤 Explorer Profile</h2>
+            <div id="profile-content"></div>
+        </div>
+    </div>
+
+    <script>
+        class RealWorldARNavigator {
+            constructor() {
+                this.currentPosition = null;
+                this.targetDestination = null;
+                this.isNavigating = false;
+                this.watchId = null;
+                this.camera = null;
+                this.arCanvas = null;
+                this.arContext = null;
+                this.deviceOrientation = 0;
+                
+                this.playerData = {
+                    name: 'Explorer',
+                    score: 0,
+                    destinationsReached: 0,
+                    distanceTraveled: 0,
+                    photosWithLocation: 0,
+                    rank: 'Novice Explorer',
+                    achievements: [],
+                    visitHistory: []
+                };
+                
+                // Real-world destinations (you can customize these for your area)
+                this.destinations = [
+                    {
+                        id: 1,
+                        name: 'City Central Park',
+                        description: 'Beautiful park in the city center',
+                        lat: 23.0225,  // Ahmedabad coordinates
+                        lng: 72.5714,
+                        reward: 100,
+                        difficulty: 'Easy',
+                        category: 'Nature'
+                    },
+                    {
+                        id: 2,
+                        name: 'Sabarmati Riverfront',
+                        description: 'Scenic riverside walkway',
+                        lat: 23.0372,
+                        lng: 72.5664,
+                        reward: 150,
+                        difficulty: 'Easy',
+                        category: 'Scenic'
+                    },
+                    {
+                        id: 3,
+                        name: 'Adalaj Stepwell',
+                        description: 'Historic architectural marvel',
+                        lat: 23.1652,
+                        lng: 72.6810,
+                        reward: 300,
+                        difficulty: 'Medium',
+                        category: 'Historical'
+                    },
+                    {
+                        id: 4,
+                        name: 'Kankaria Lake',
+                        description: 'Popular recreational lake',
+                        lat: 23.0088,
+                        lng: 72.5987,
+                        reward: 200,
+                        difficulty: 'Easy',
+                        category: 'Nature'
+                    },
+                    {
+                        id: 5,
+                        name: 'Akshardham Temple',
+                        description: 'Magnificent temple complex',
+                        lat: 23.0138,
+                        lng: 72.6569,
+                        reward: 400,
+                        difficulty: 'Medium',
+                        category: 'Spiritual'
+                    },
+                    {
+                        id: 6,
+                        name: 'Science City',
+                        description: 'Interactive science museum',
+                        lat: 23.0395,
+                        lng: 72.5318,
+                        reward: 250,
+                        difficulty: 'Medium',
+                        category: 'Educational'
+                    },
+                    {
+                        id: 7,
+                        name: 'Mahatma Gandhi Ashram',
+                        description: 'Historic independence movement site',
+                        lat: 23.0361,
+                        lng: 72.5651,
+                        reward: 350,
+                        difficulty: 'Medium',
+                        category: 'Historical'
+                    },
+                    {
+                        id: 8,
+                        name: 'Law Garden',
+                        description: 'Famous night market location',
+                        lat: 23.0248,
+                        lng: 72.5673,
+                        reward: 180,
+                        difficulty: 'Easy',
+                        category: 'Culture'
+                    }
+                ];
+                
+                this.leaderboard = [
+                    { name: 'GlobeWalker_Pro', score: 5420, rank: 'Legendary Explorer', destinations: 15 },
+                    { name: 'CityExplorer99', score: 4280, rank: 'Master Navigator', destinations: 12 },
+                    { name: 'AdventureSeeker', score: 3650, rank: 'Expert Traveler', destinations: 10 },
+                    { name: 'WanderlustGuru', score: 2890, rank: 'Advanced Explorer', destinations: 8 },
+                    { name: 'You', score: 0, rank: 'Novice Explorer', destinations: 0 },
+                    { name: 'PhotoHunter_AR', score: 1950, rank: 'Intermediate Explorer', destinations: 6 },
+                    { name: 'QuestMaster', score: 1420, rank: 'Beginner Explorer', destinations: 4 },
+                    { name: 'TrailBlazer', score: 890, rank: 'Novice Explorer', destinations: 2 }
+                ];
+                
+                this.init();
+            }
+            
+            async init() {
+                try {
+                    await this.requestPermissions();
+                    await this.setupCamera();
+                    await this.setupGeolocation();
+                    this.setupAR();
+                    this.setupEventListeners();
+                    this.setupDeviceOrientation();
+                    
+                    document.getElementById('loading').style.display = 'none';
+                    document.getElementById('container').style.display = 'block';
+                    
+                    this.updateUI();
+                    this.showNotification('🎯 AR Navigator ready! Choose a destination to start exploring.');
+                    
+                } catch (error) {
+                    console.error('Initialization failed:', error);
+                    this.showError('Failed to initialize. Please check permissions and try again.');
+                }
+            }
+            
+            async requestPermissions() {
+                // Request camera permission
+                try {
+                    await navigator.mediaDevices.getUserMedia({ video: true });
+                } catch (error) {
+                    throw new Error('Camera permission required');
+                }
+                
+                // Request location permission
+                return new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(resolve, reject, {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 60000
+                    });
+                });
+            }
+            
+            async setupCamera() {
+                try {
+                    const video = document.getElementById('camera-view');
+                    const stream = await navigator.mediaDevices.getUserMedia({
+                        video: { 
+                            facingMode: 'environment',
+                            width: { ideal: 1280 },
+                            height: { ideal: 720 }
+                        }
+                    });
+                    video.srcObject = stream;
+                    this.camera = video;
+                } catch (error) {
+                    console.error('Camera setup failed:', error);
+                    throw error;
+                }
+            }
+            
+            async setupGeolocation() {
+                // Get initial position
+                return new Promise((resolve, reject) => {
+                    navigator.geolocation.getCurrentPosition(
+                        (position) => {
+                            this.currentPosition = {
+                                lat: position.coords.latitude,
+                                lng: position.coords.longitude,
+                                accuracy: position.coords.accuracy,
+                                timestamp: position.timestamp
+                            };
+                            
+                            this.updateLocationDisplay();
+                            this.startLocationWatching();
+                            resolve();
+                        },
+                        (error) => {
+                            console.error('Geolocation failed:', error);
+                            reject(error);
+                        },
+                        {
+                            enableHighAccuracy: true,
+                            timeout: 15000,
+                            maximumAge: 60000
+                        }
+                    );
+                });
+            }
+            
+            startLocationWatching() {
+                this.watchId = navigator.geolocation.watchPosition(
+                    (position) => {
+                        const newPosition = {
+                            lat: position.coords.latitude,
+                            lng: position.coords.longitude,
+                            accuracy: position.coords.accuracy,
+                            timestamp: position.timestamp
+                        };
+                        
+                        // Calculate distance traveled
+                        if (this.currentPosition) {
+                            const distance = this.calculateDistance(
+                                this.currentPosition.lat, this.currentPosition.lng,
+                                newPosition.lat, newPosition.lng
+                            );
+                            
+                            // Only count significant movements (> 10 meters)
+                            if (distance > 0.01) {
+                                this.playerData.distanceTraveled += distance;
+                            }
+                        }
+                        
+                        this.currentPosition = newPosition;
+                        this.updateLocationDisplay();
+                        
+                        if (this.isNavigating && this.targetDestination) {
+                            this.updateNavigation();
+                        }
+                        
+                        this.checkDestinationReached();
+                    },
+                    (error) => {
+                        console.error('Location watch failed:', error);
+                        this.updateGPSAccuracy('low');
+                    },
+                    {
+                        enableHighAccuracy: true,
+                        timeout: 10000,
+                        maximumAge: 30000
+                    }
+                );
+            }
+            
+            setupDeviceOrientation() {
+                if (window.DeviceOrientationEvent) {
+                    window.addEventListener('deviceorientationabsolute', (event) => {
+                        this.deviceOrientation = event.alpha || 0;
+                        this.updateDirectionIndicator();
+                    });
+                    
+                    // Fallback for older devices
+                    window.addEventListener('deviceorientation', (event) => {
+                        if (!this.deviceOrientation) {
+                            this.deviceOrientation = event.alpha || 0;
+                            this.updateDirectionIndicator();
+                        }
+                    });
+                }
+            }
+            
+            setupAR() {
+                const canvas = document.getElementById('ar-overlay');
+                this.arCanvas = canvas;
+                this.arContext = canvas.getContext('2d');
+                
+                const updateCanvasSize = () => {
+                    canvas.width = window.innerWidth;
+                    canvas.height = window.innerHeight;
+                };
+                updateCanvasSize();
+                window.addEventListener('resize', updateCanvasSize);
+                
+                this.startARRender();
+            }
+            
+            startARRender() {
+                const render = () => {
+                    this.renderAROverlay();
+                    requestAnimationFrame(render);
+                };
+                render();
+            }
+            
+            renderAROverlay() {
+                const ctx = this.arContext;
+                ctx.clearRect(0, 0, this.arCanvas.width, this.arCanvas.height);
+                
+                if (this.isNavigating && this.targetDestination && this.currentPosition) {
+                    this.drawNavigationAR(ctx);
+                }
+                
+                this.drawARCompass(ctx);
+            }
+            
+            drawNavigationAR(ctx) {
+                const canvas = this.arCanvas;
+                const centerX = canvas.width / 2;
+                const centerY = canvas.height / 2;
+                
+                // Calculate bearing to destination
+                const bearing = this.calculateBearing(
+                    this.currentPosition.lat, this.currentPosition.lng,
+                    this.targetDestination.lat, this.targetDestination.lng
+                );
+                
+                // Adjust for device orientation
+                const adjustedBearing = bearing - this.deviceOrientation;
+                const bearingRad = (adjustedBearing * Math.PI) / 180;
+                
+                // Draw direction path
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 6;
+                ctx.setLineDash([10, 5]);
+                ctx.beginPath();
+                ctx.moveTo(centerX, centerY + 50);
+                
+                const pathLength = 150;
+                const endX = centerX + Math.sin(bearingRad) * pathLength;
+                const endY = centerY + 50 - Math.cos(bearingRad) * pathLength;
+                
+                ctx.lineTo(endX, endY);
+                ctx.stroke();
+                ctx.setLineDash([]);
+                
+                // Draw destination indicator
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(endX, endY, 20, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // Destination icon
+                ctx.fillStyle = 'black';
+                ctx.font = 'bold 16px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('🎯', endX, endY);
+                
+                // Distance text
+                const distance = this.calculateDistance(
+                    this.currentPosition.lat, this.currentPosition.lng,
+                    this.targetDestination.lat, this.targetDestination.lng
+                );
+                
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 14px Arial';
+                ctx.strokeStyle = 'black';
+                ctx.lineWidth = 3;
+                ctx.strokeText(`${distance.toFixed(2)} km`, endX, endY - 35);
+                ctx.fillText(`${distance.toFixed(2)} km`, endX, endY - 35);
+            }
+            
+            drawARCompass(ctx) {
+                const canvas = this.arCanvas;
+                const x = canvas.width - 60;
+                const y = 60;
+                const radius = 30;
+                
+                // Compass background
+                ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+                ctx.beginPath();
+                ctx.arc(x, y, radius, 0, Math.PI * 2);
+                ctx.fill();
+                
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 2;
+                ctx.stroke();
+                
+                // North indicator (adjusted for device orientation)
+                const northAngle = (-this.deviceOrientation * Math.PI) / 180;
+                const northX = x + Math.sin(northAngle) * (radius - 8);
+                const northY = y - Math.cos(northAngle) * (radius - 8);
+                
+                ctx.fillStyle = '#FF4757';
+                ctx.beginPath();
+                ctx.arc(northX, northY, 6, 0, Math.PI * 2);
+                ctx.fill();
+                
+                // N label
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 10px Arial';
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                ctx.fillText('N', northX, northY);
+            }
+            
+            setupEventListeners() {
+                // Destinations button
+                document.getElementById('destinations-btn').addEventListener('click', () => {
+                    this.showDestinations();
+                });
+                
+                // Navigation button
+                document.getElementById('navigate-btn').addEventListener('click', () => {
+                    this.toggleNavigation();
+                });
+                
+                // Camera button
+                document.getElementById('camera-btn').addEventListener('click', () => {
+                    this.takeGeotaggedPhoto();
+                });
+                
+                // Leaderboard button
+                document.getElementById('leaderboard-btn').addEventListener('click', () => {
+                    this.showLeaderboard();
+                });
+                
+                // Profile button
+                document.getElementById('profile-btn').addEventListener('click', () => {
+                    this.showProfile();
+                });
+                
+                // Close modal handlers
+                document.querySelectorAll('.close-btn').forEach(btn => {
+                    btn.addEventListener('click', (e) => {
+                        e.target.closest('.modal').style.display = 'none';
+                    });
+                });
+                
+                // Modal backdrop close
+                document.querySelectorAll('.modal').forEach(modal => {
+                    modal.addEventListener('click', (e) => {
+                        if (e.target === modal) {
+                            modal.style.display = 'none';
+                        }
+                    });
+                });
+            }
+            
+            showDestinations() {
+                const modal = document.getElementById('destinations-modal');
+                const list = document.getElementById('destinations-list');
+                
+                const destinationsHTML = this.destinations.map(dest => {
+                    const distance = this.currentPosition ? 
+                        this.calculateDistance(
+                            this.currentPosition.lat, this.currentPosition.lng,
+                            dest.lat, dest.lng
+                        ).toFixed(2) : '--';
+                    
+                    const isVisited = this.playerData.visitHistory.some(v => v.destinationId === dest.id);
+                    
+                    return `
+                        <div class="leaderboard-item" style="cursor: pointer; border-left-color: ${isVisited ? '#4CAF50' : '#FFD700'};" 
+                             onclick="window.arApp.selectDestination(${dest.id})">
+                            <div style="font-size: 24px;">
+                                ${isVisited ? '✅' : this.getCategoryIcon(dest.category)}
+                            </div>
+                            <div class="player-info">
+                                <div class="player-name">${dest.name}</div>
+                                <div class="player-level">${dest.description}</div>
+                                <div style="font-size: 12px; color: #ccc; margin-top: 3px;">
+                                    📍 ${distance} km away • ${dest.difficulty} • 🎁 ${dest.reward} pts
+                                </div>
+                            </div>
+                            <div class="player-score">
+                                ${isVisited ? '✓' : '→'}
+                            </div>
+                        </div>
+                    `;
+                }).join('');
+                
+                list.innerHTML = destinationsHTML;
+                modal.style.display = 'block';
+            }
+            
+            getCategoryIcon(category) {
+                const icons = {
+                    'Nature': '🌳',
+                    'Historical': '🏛️',
+                    'Scenic': '🌅',
+                    'Spiritual': '🕉️',
+                    'Educational': '🔬',
+                    'Culture': '🎭'
+                };
+                return icons[category] || '📍';
+            }
+            
+            selectDestination(destinationId) {
+                this.targetDestination = this.destinations.find(d => d.id === destinationId);
+                document.getElementById('destinations-modal').style.display = 'none';
+                
+                if (this.targetDestination) {
+                    this.updateDestinationDisplay();
+                    this.showNotification(`🎯 Destination set: ${this.targetDestination.name}`);
+                    
+                    // Enable navigation button
+                    const navBtn = document.getElementById('navigate-btn');
+                    navBtn.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
+                    navBtn.title = 'Start Navigation';
+                }
+            }
+            
+            toggleNavigation() {
+                if (!this.targetDestination) {
+                    this.showNotification('⚠️ Please select a destination first!');
+                    return;
+                }
+                
+                this.isNavigating = !this.isNavigating;
+                const navBtn = document.getElementById('navigate-btn');
+                const directionIndicator = document.getElementById('direction-indicator');
+                
+                if (this.isNavigating) {
+                    navBtn.innerHTML = '⏹️';
+                    navBtn.title = 'Stop Navigation';
+                    navBtn.style.background = 'linear-gradient(45deg, #FF4757, #ff3838)';
+                    directionIndicator.style.display = 'block';
+                    
+                    this.showNotification(`🧭 Navigation started to ${this.targetDestination.name}`);
+                    this.updateNavigation();
+                } else {
+                    navBtn.innerHTML = '🧭';
+                    navBtn.title = 'Start Navigation';
+                    navBtn.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
+                    directionIndicator.style.display = 'none';
+                    
+                    this.showNotification('🛑 Navigation stopped');
+                }
+            }
+            
+            updateNavigation() {
+                if (!this.currentPosition || !this.targetDestination || !this.isNavigating) return;
+                
+                const distance = this.calculateDistance(
+                    this.currentPosition.lat, this.currentPosition.lng,
+                    this.targetDestination.lat, this.targetDestination.lng
+                );
+                
+                const bearing = this.calculateBearing(
+                    this.currentPosition.lat, this.currentPosition.lng,
+                    this.targetDestination.lat, this.targetDestination.lng
+                );
+                
+                // Update distance display
+                document.getElementById('destination-distance').textContent = `${distance.toFixed(2)} km`;
+                
+                // Update ETA (assuming walking speed of 5 km/h)
+                const walkingSpeed = 5; // km/h
+                const eta = (distance / walkingSpeed) * 60; // minutes
+                document.getElementById('destination-eta').textContent = 
+                    `ETA: ${Math.round(eta)} min`;
+                
+                // Update direction indicator
+                this.updateDirectionIndicator(bearing);
+                
+                // Update GPS accuracy
+                this.updateGPSAccuracy();
+            }
+            
+            updateDirectionIndicator(bearing = 0) {
+                const arrow = document.getElementById('direction-arrow');
+                const bearingText = document.getElementById('bearing-text');
+                
+                if (arrow && this.isNavigating) {
+                    const adjustedBearing = bearing - this.deviceOrientation;
+                    arrow.style.transform = `translate(-50%, -70%) rotate(${adjustedBearing}deg)`;
+                    
+                    // Update bearing text
+                    const directions = ['N', 'NE', 'E', 'SE', 'S', 'SW', 'W', 'NW'];
+                    const directionIndex = Math.round(bearing / 45) % 8;
+                    bearingText.textContent = `${directions[directionIndex]} ${Math.round(bearing)}°`;
+                }
+            }
+            
+            checkDestinationReached() {
+                if (!this.currentPosition || !this.targetDestination || !this.isNavigating) return;
+                
+                const distance = this.calculateDistance(
+                    this.currentPosition.lat, this.currentPosition.lng,
+                    this.targetDestination.lat, this.targetDestination.lng
+                );
+                
+                // Check if within 50 meters (0.05 km) of destination
+                if (distance < 0.05) {
+                    this.destinationReached();
+                }
+            }
+            
+            destinationReached() {
+                const destination = this.targetDestination;
+                
+                // Stop navigation
+                this.isNavigating = false;
+                document.getElementById('direction-indicator').style.display = 'none';
+                
+                // Award points
+                this.playerData.score += destination.reward;
+                this.playerData.destinationsReached++;
+                
+                // Record visit
+                this.playerData.visitHistory.push({
+                    destinationId: destination.id,
+                    name: destination.name,
+                    timestamp: new Date().toISOString(),
+                    pointsEarned: destination.reward
+                });
+                
+                // Update rank
+                this.updatePlayerRank();
+                
+                // Show achievement
+                this.showAchievementPopup(`🎉 Destination Reached!\n${destination.name}\n+${destination.reward} points`);
+                
+                // Clear target
+                this.targetDestination = null;
+                this.updateDestinationDisplay();
+                this.updateUI();
+                
+                // Reset navigation button
+                const navBtn = document.getElementById('navigate-btn');
+                navBtn.innerHTML = '🧭';
+                navBtn.style.background = 'linear-gradient(45deg, #4CAF50, #45a049)';
+                
+                // Check achievements
+                this.checkLocationAchievements();
+            }
+            
+            checkLocationAchievements() {
+                const visited = this.playerData.destinationsReached;
+                
+                if (visited === 1) {
+                    this.unlockAchievement('first_destination', 'First Journey', 'Complete your first destination', 50);
+                }
+                if (visited === 5) {
+                    this.unlockAchievement('explorer', 'City Explorer', 'Visit 5 destinations', 200);
+                }
+                if (visited === 10) {
+                    this.unlockAchievement('master_explorer', 'Master Explorer', 'Visit 10 destinations', 500);
+                }
+                
+                // Distance achievements
+                if (this.playerData.distanceTraveled >= 10) {
+                    this.unlockAchievement('marathon', 'Marathon Walker', 'Travel 10km total', 300);
+                }
+                
+                // Photo achievements
+                if (this.playerData.photosWithLocation >= 25) {
+                    this.unlockAchievement('photographer', 'Travel Photographer', 'Take 25 geotagged photos', 150);
+                }
+            }
+            
+            unlockAchievement(id, name, description, reward) {
+                if (this.playerData.achievements.some(a => a.id === id)) return;
+                
+                this.playerData.achievements.push({ id, name, description, reward });
+                this.playerData.score += reward;
+                
+                this.showAchievementPopup(`🏆 Achievement Unlocked!\n${name}\n+${reward} points`);
+            }
+            
+            takeGeotaggedPhoto() {
+                // Camera flash effect
+                const flash = document.getElementById('camera-flash');
+                flash.classList.add('flash-animation');
+                setTimeout(() => flash.classList.remove('flash-animation'), 200);
+                
+                if (this.currentPosition) {
+                    this.playerData.photosWithLocation++;
+                    this.playerData.score += 20;
+                    
+                    // Bonus points if near destination
+                    let bonus = 0;
+                    if (this.targetDestination) {
+                        const distance = this.calculateDistance(
+                            this.currentPosition.lat, this.currentPosition.lng,
+                            this.targetDestination.lat, this.targetDestination.lng
+                        );
+                        
+                        if (distance < 0.1) { // Within 100m
+                            bonus = 50;
+                            this.playerData.score += bonus;
+                        }
+                    }
+                    
+                    const message = bonus > 0 ? 
+                        `📸 Photo captured! +20 pts (+${bonus} location bonus)` :
+                        '📸 Photo captured! +20 points';
+                    
+                    this.showNotification(message);
+                    this.updateUI();
+                } else {
+                    this.showNotification('📸 Photo captured! (No location data)');
+                }
+            }
+            
+            updateLocationDisplay() {
+                if (!this.currentPosition) return;
+                
+                // Reverse geocoding simulation (in real app, use a geocoding service)
+                const locationName = this.getLocationName(this.currentPosition.lat, this.currentPosition.lng);
+                document.getElementById('current-location').textContent = locationName;
+                document.getElementById('current-coords').textContent = 
+                    `${this.currentPosition.lat.toFixed(4)}, ${this.currentPosition.lng.toFixed(4)}`;
+            }
+            
+            updateDestinationDisplay() {
+                if (this.targetDestination) {
+                    document.getElementById('destination-name').textContent = this.targetDestination.name;
+                    document.getElementById('destination-reward').textContent = 
+                        `🎁 Reward: ${this.targetDestination.reward} points`;
+                    
+                    if (this.currentPosition) {
+                        const distance = this.calculateDistance(
+                            this.currentPosition.lat, this.currentPosition.lng,
+                            this.targetDestination.lat, this.targetDestination.lng
+                        );
+                        document.getElementById('destination-distance').textContent = `${distance.toFixed(2)} km`;
+                        
+                        const walkingSpeed = 5;
+                        const eta = (distance / walkingSpeed) * 60;
+                        document.getElementById('destination-eta').textContent = `ETA: ${Math.round(eta)} min`;
+                    }
+                } else {
+                    document.getElementById('destination-name').textContent = 'No destination selected';
+                    document.getElementById('destination-distance').textContent = '-- km';
+                    document.getElementById('destination-eta').textContent = 'ETA: --';
+                    document.getElementById('destination-reward').textContent = '🎁 Select destination';
+                }
+            }
+            
+            updateGPSAccuracy() {
+                const accuracy = this.currentPosition?.accuracy || 999;
+                const indicator = document.getElementById('gps-accuracy');
+                
+                if (accuracy < 10) {
+                    indicator.className = 'gps-accuracy gps-high';
+                    indicator.textContent = '📡 GPS: High Accuracy';
+                } else if (accuracy < 50) {
+                    indicator.className = 'gps-accuracy gps-medium';
+                    indicator.textContent = '📡 GPS: Medium Accuracy';
+                } else {
+                    indicator.className = 'gps-accuracy gps-low';
+                    indicator.textContent = '📡 GPS: Low Accuracy';
+                }
+            }
+            
+            updatePlayerRank() {
+                const score = this.playerData.score;
+                const destinations = this.playerData.destinationsReached;
+                
+                if (score >= 3000 && destinations >= 10) this.playerData.rank = 'Legendary Explorer';
+                else if (score >= 2000 && destinations >= 8) this.playerData.rank = 'Master Navigator';
+                else if (score >= 1500 && destinations >= 6) this.playerData.rank = 'Expert Traveler';
+                else if (score >= 1000 && destinations >= 4) this.playerData.rank = 'Advanced Explorer';
+                else if (score >= 500 && destinations >= 2) this.playerData.rank = 'Intermediate Explorer';
+                else if (score >= 200 && destinations >= 1) this.playerData.rank = 'Beginner Explorer';
+                else this.playerData.rank = 'Novice Explorer';
+            }
+            
+            showLeaderboard() {
+                const modal = document.getElementById('leaderboard-modal');
+                const list = document.getElementById('leaderboard-list');
+                
+                // Update player data in leaderboard
+                const playerEntry = this.leaderboard.find(p => p.name === 'You');
+                if (playerEntry) {
+                    playerEntry.score = this.playerData.score;
+                    playerEntry.rank = this.playerData.rank;
+                    playerEntry.destinations = this.playerData.destinationsReached;
+                }
+                
+                // Sort by score
+                this.leaderboard.sort((a, b) => b.score - a.score);
+                
+                const leaderboardHTML = this.leaderboard.map((player, index) => `
+                    <div class="leaderboard-item ${player.name === 'You' ? 'style="border-left-color: #FFD700; background: rgba(255, 215, 0, 0.1);"' : ''}">
+                        <div class="rank-number">#${index + 1}</div>
+                        <div class="player-info">
+                            <div class="player-name">${player.name}</div>
+                            <div class="player-level">${player.rank}</div>
+                            <div style="font-size: 12px; color: #ccc;">🎯 ${player.destinations} destinations</div>
+                        </div>
+                        <div class="player-score">${player.score.toLocaleString()}</div>
+                    </div>
+                `).join('');
+                
+                list.innerHTML = leaderboardHTML;
+                modal.style.display = 'block';
+            }
+            
+            showProfile() {
+                const modal = document.getElementById('profile-modal');
+                const content = document.getElementById('profile-content');
+                
+                const profileHTML = `
+                    <div style="text-align: center; margin-bottom: 30px;">
+                        <div style="width: 80px; height: 80px; background: linear-gradient(45deg, #4CAF50, #45a049); border-radius: 50%; margin: 0 auto 15px; display: flex; align-items: center; justify-content: center; font-size: 32px;">👤</div>
+                        <h3 style="color: #FFD700; margin: 0;">${this.playerData.name}</h3>
+                        <p style="color: #4CAF50; margin: 5px 0;">${this.playerData.rank}</p>
+                    </div>
+                    
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-bottom: 25px;">
+                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 24px; color: #FFD700; font-weight: bold;">${this.playerData.score.toLocaleString()}</div>
+                            <div style="font-size: 12px;">Total Score</div>
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 24px; color: #4CAF50; font-weight: bold;">${this.playerData.destinationsReached}</div>
+                            <div style="font-size: 12px;">Destinations</div>
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 24px; color: #FF4757; font-weight: bold;">${this.playerData.distanceTraveled.toFixed(1)}</div>
+                            <div style="font-size: 12px;">KM Traveled</div>
+                        </div>
+                        <div style="background: rgba(255, 255, 255, 0.1); padding: 15px; border-radius: 10px; text-align: center;">
+                            <div style="font-size: 24px; color: #FFD700; font-weight: bold;">${this.playerData.photosWithLocation}</div>
+                            <div style="font-size: 12px;">Photos Taken</div>
+                        </div>
+                    </div>
+                    
+                    <h4 style="color: #FFD700; margin-bottom: 15px;">🏆 Achievements (${this.playerData.achievements.length})</h4>
+                    <div style="max-height: 200px; overflow-y: auto;">
+                        ${this.playerData.achievements.length > 0 ? 
+                            this.playerData.achievements.map(achievement => `
+                                <div style="background: rgba(255, 215, 0, 0.1); padding: 10px; margin: 5px 0; border-radius: 8px; border-left: 3px solid #FFD700;">
+                                    <div style="font-weight: bold;">🏆 ${achievement.name}</div>
+                                    <div style="font-size: 12px; color: #ccc;">${achievement.description} (+${achievement.reward} pts)</div>
+                                </div>
+                            `).join('') :
+                            '<p style="color: #ccc; text-align: center;">No achievements yet. Start exploring!</p>'
+                        }
+                    </div>
+                    
+                    <h4 style="color: #FFD700; margin: 20px 0 15px 0;">📍 Recent Visits</h4>
+                    <div style="max-height: 150px; overflow-y: auto;">
+                        ${this.playerData.visitHistory.length > 0 ?
+                            this.playerData.visitHistory.slice(-5).reverse().map(visit => `
+                                <div style="background: rgba(76, 175, 80, 0.1); padding: 10px; margin: 5px 0; border-radius: 8px; border-left: 3px solid #4CAF50;">
+                                    <div style="font-weight: bold;">📍 ${visit.name}</div>
+                                    <div style="font-size: 12px; color: #ccc;">${new Date(visit.timestamp).toLocaleDateString()} (+${visit.pointsEarned} pts)</div>
+                                </div>
+                            `).join('') :
+                            '<p style="color: #ccc; text-align: center;">No destinations visited yet.</p>'
+                        }
+                    </div>
+                `;
+                
+                content.innerHTML = profileHTML;
+                modal.style.display = 'block';
+            }
+            
+            updateUI() {
+                document.getElementById('total-score').textContent = this.playerData.score.toLocaleString();
+                document.getElementById('destinations-reached').textContent = this.playerData.destinationsReached;
+                document.getElementById('distance-traveled').textContent = this.playerData.distanceTraveled.toFixed(1);
+            }
+            
+            // Utility Functions
+            calculateDistance(lat1, lng1, lat2, lng2) {
+                const R = 6371; // Earth's radius in kilometers
+                const dLat = this.toRadians(lat2 - lat1);
+                const dLng = this.toRadians(lng2 - lng1);
+                
+                const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+                    Math.cos(this.toRadians(lat1)) * Math.cos(this.toRadians(lat2)) *
+                    Math.sin(dLng / 2) * Math.sin(dLng / 2);
+                
+                const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+                return R * c;
+            }
+            
+            calculateBearing(lat1, lng1, lat2, lng2) {
+                const dLng = this.toRadians(lng2 - lng1);
+                const lat1Rad = this.toRadians(lat1);
+                const lat2Rad = this.toRadians(lat2);
+                
+                const y = Math.sin(dLng) * Math.cos(lat2Rad);
+                const x = Math.cos(lat1Rad) * Math.sin(lat2Rad) -
+                    Math.sin(lat1Rad) * Math.cos(lat2Rad) * Math.cos(dLng);
+                
+                let bearing = Math.atan2(y, x);
+                bearing = this.toDegrees(bearing);
+                return (bearing + 360) % 360;
+            }
+            
+            toRadians(degrees) {
+                return degrees * (Math.PI / 180);
+            }
+            
+            toDegrees(radians) {
+                return radians * (180 / Math.PI);
+            }
+            
+            getLocationName(lat, lng) {
+                // Simplified location naming - in real app, use reverse geocoding API
+                const locations = [
+                    { name: 'City Center', lat: 23.0225, lng: 72.5714 },
+                    { name: 'Riverfront Area', lat: 23.0372, lng: 72.5664 },
+                    { name: 'Historical District', lat: 23.1652, lng: 72.6810 },
+                    { name: 'Lake District', lat: 23.0088, lng: 72.5987 },
+                    { name: 'Temple Complex', lat: 23.0138, lng: 72.6569 }
+                ];
+                
+                let closest = 'Unknown Location';
+                let minDistance = Infinity;
+                
+                locations.forEach(loc => {
+                    const distance = this.calculateDistance(lat, lng, loc.lat, loc.lng);
+                    if (distance < minDistance) {
+                        minDistance = distance;
+                        closest = loc.name;
+                    }
+                });
+                
+                return closest;
+            }
+            
+            showNotification(message) {
+                const notification = document.createElement('div');
+                notification.className = 'notification';
+                notification.textContent = message;
+                document.body.appendChild(notification);
+                
+                setTimeout(() => {
+                    if (document.body.contains(notification)) {
+                        document.body.removeChild(notification);
+                    }
+                }, 3000);
+            }
+            
+            showAchievementPopup(message) {
+                const popup = document.createElement('div');
+                popup.className = 'achievement-popup';
+                popup.innerHTML = message.replace(/\n/g, '<br>');
+                document.body.appendChild(popup);
+                
+                setTimeout(() => {
+                    if (document.body.contains(popup)) {
+                        document.body.removeChild(popup);
+                    }
+                }, 4000);
+            }
+            
+            showError(message) {
+                const loading = document.getElementById('loading');
+                loading.innerHTML = `
+                    <div style="color: #FF4757; font-size: 24px; margin-bottom: 20px;">⚠️</div>
+                    <h2 style="color: #FF4757;">Error</h2>
+                    <p>${message}</p>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: #4CAF50; color: white; border: none; border-radius: 5px; cursor: pointer;">
+                        Try Again
+                    </button>
+                `;
+            }
+        }
+        
+        // Global reference for onclick handlers
+        window.arApp = null;
+        
+        // Initialize app
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                window.arApp = new RealWorldARNavigator();
+            } catch (error) {
+                console.error('App initialization failed:', error);
+            }
+        });
+        
+        // Handle page visibility changes
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && window.arApp && window.arApp.watchId) {
+                navigator.geolocation.clearWatch(window.arApp.watchId);
+            } else if (!document.hidden && window.arApp && !window.arApp.watchId) {
+                window.arApp.startLocationWatching();
+            }
+        });
+        
+        // Handle orientation changes
+        window.addEventListener('orientationchange', () => {
+            setTimeout(() => {
+                if (window.arApp && window.arApp.arCanvas) {
+                    window.arApp.arCanvas.width = window.innerWidth;
+                    window.arApp.arCanvas.height = window.innerHeight;
+                }
+            }, 100);
+        });
+        
+        // Prevent zoom on double tap
+        let lastTouchEnd = 0;
+        document.addEventListener('touchend', (event) => {
+            const now = (new Date()).getTime();
+            if (now - lastTouchEnd <= 300) {
+                event.preventDefault();
+            }
+            lastTouchEnd = now;
+        }, false);
+    </script>
+</body>
+</html>
